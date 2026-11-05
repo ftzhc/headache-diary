@@ -1,0 +1,1489 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<script>
+/* =====================================================================================
+   頭痛ダイアリー ― 設定（クリニック名・画面の文言・選択肢・注意書き）
+   -------------------------------------------------------------------------------------
+   文言を直すときは、この CONFIG の中だけを書き換えてください。
+   ・文字は「"」で囲みます。行の終わりの「,」は消さないでください。
+   ・空（""）にした注意書きは画面に表示されません。
+   ・選択肢の id / value / cls は保存データと結びついているので変えないでください（label・desc は変えられます）。
+   ===================================================================================== */
+const CONFIG = {
+
+  /* ■ クリニック名（画面上部・印刷物・書き出しファイルに入ります） */
+  clinic: {
+    name: "福岡天神頭痛と肺のクリニック",
+  },
+
+  /* ■ アプリの基本設定 */
+  app: {
+    title: "頭痛ダイアリー",
+    version: "1.0.0",
+    storageKey: "ftz-headache-diary-v1",      // 端末内の保存キー（変えると今までの記録が見えなくなります）
+    exportTag: "ftz-headache-diary",           // 書き出しファイルの識別子（読み込み時の確認に使います）
+    exportFilePrefix: "頭痛ダイアリー_記録",      // 書き出しファイル名の先頭（例：頭痛ダイアリー_記録_20261105.json）
+    weekStart: 0,                              // カレンダーの始まり 0=日曜 1=月曜
+    exportReminderDays: 30,                    // 書き出し（バックアップ）を促す間隔（日）
+    exportReminderMinRecords: 7,               // 記録がこの日数以上あるときだけ促す
+  },
+
+  /* ■ 機能の初期設定 */
+  features: {
+    menstruationDefault: true,   // 生理の欄を最初から表示する（患者さんは「設定」で表示／非表示を変えられます）
+    serviceWorker: true,         // 一度開いたあとは電波のない場所でも開けるようにする（false で無効）
+  },
+
+  /* ■ 注意書き ―― 公開前に医師が文面を確認してください */
+  notices: {
+    // 画面上部と「設定」に表示
+    privacy: "記録はこのスマホ（この端末のブラウザ）の中だけに保存されます。クリニックを含め、どこにも送信されません。",
+    // 各画面の下部と印刷物に表示
+    disclaimer: "このページは記録用です。診断や治療の判断はできません。",
+    // 各画面の下部に表示
+    emergency: "突然の激しい頭痛、いつもと違う頭痛、手足のしびれやまひ、ろれつが回らない、熱を伴う頭痛などがあるときは、すぐに医療機関を受診してください。",
+    // 薬の欄の説明
+    preventiveMedNote: "毎日決まって飲む予防の薬は、ここに書かなくてよいです。頭痛のときに飲んだ薬だけを記録してください。",
+    // 服用日数の下に表示する文言。医師の確認後に記入してください（空のときは何も表示しません）
+    medicationNote: "",
+  },
+
+  /* ■ 選択肢 */
+  options: {
+    // 痛みの強さ（value・cls は変えない。symbol はカレンダー・表で使う1文字）
+    painLevels: [
+      { value: 0, label: "なし",     symbol: "－", desc: "",                          cls: "p0" },
+      { value: 1, label: "軽い",     symbol: "軽", desc: "仕事や家事はふつうにできる",     cls: "p1" },
+      { value: 2, label: "中くらい", symbol: "中", desc: "仕事や家事に差しつかえる",       cls: "p2" },
+      { value: 3, label: "強い",     symbol: "強", desc: "寝込む、仕事や家事ができない",   cls: "p3" },
+    ],
+    // 1日の区分（id は変えない）
+    timeSlots: [
+      { id: "am",    label: "午前" },
+      { id: "pm",    label: "午後" },
+      { id: "night", label: "夜" },
+    ],
+    // 生活への支障（value は変えない。short は表で使う短い表記）
+    impactLevels: [
+      { value: 0, label: "なし",       sub: "",                 short: "－" },
+      { value: 1, label: "少しあった", sub: "",                 short: "少し" },
+      { value: 2, label: "大きかった", sub: "休んだ・寝込んだ", short: "大" },
+    ],
+    // 薬の効き目（id は変えない）
+    effects: [
+      { id: "good", symbol: "○", label: "よく効いた" },
+      { id: "some", symbol: "△", label: "少し効いた" },
+      { id: "none", symbol: "×", label: "効かなかった" },
+    ],
+    // 痛み方（id は変えない）
+    painTypes: [
+      { id: "throb", label: "ズキズキ脈打つ",       short: "ズキズキ" },
+      { id: "tight", label: "締めつけられる・重い", short: "締めつけ・重い" },
+      { id: "other", label: "その他",               short: "その他" },
+    ],
+    // 一緒に出た症状（id は変えない）
+    symptoms: [
+      { id: "nausea", label: "吐き気・吐いた",                 short: "吐き気" },
+      { id: "photo",  label: "光がまぶしい",                   short: "光" },
+      { id: "phono",  label: "音がつらい",                     short: "音" },
+      { id: "aura",   label: "目の前がチカチカする（前兆）",   short: "前兆" },
+      { id: "dizzy",  label: "めまい",                         short: "めまい" },
+    ],
+    // きっかけ（id は変えない）
+    triggers: [
+      { id: "sleepless", label: "寝不足" },
+      { id: "oversleep", label: "寝すぎ" },
+      { id: "stress",    label: "ストレス" },
+      { id: "weather",   label: "天気・気圧" },
+      { id: "alcohol",   label: "お酒" },
+      { id: "hunger",    label: "空腹" },
+      { id: "crowd",     label: "人混み" },
+    ],
+    // 薬を飲んだ時刻のかんたん入力
+    quickTimes: [
+      { label: "朝", time: "07:00" },
+      { label: "昼", time: "12:00" },
+      { label: "夕", time: "18:00" },
+      { label: "夜", time: "22:00" },
+    ],
+  },
+
+  /* ■ 画面の文言 */
+  text: {
+    /* 共通 */
+    privacyBadge: "記録はこのスマホの中だけに保存",
+    nav: { record: "記録", month: "カレンダー", doctor: "医師に見せる", settings: "設定" },
+    demoBanner: "見本データを表示しています。この画面での入力は保存されません。",
+    demoExit: "見本を終了する",
+    storageErrorBanner: "この端末・ブラウザでは記録を保存できない状態です（プライベートブラウズなど）。通常のブラウザで開き直してください。",
+    saved: "保存しました",
+    saveError: "保存できませんでした。端末の空き容量やブラウザの設定を確認してください。",
+    cancel: "やめる",
+    close: "閉じる",
+    add: "追加する",
+    remove: "削除",
+    now: "いま",
+    back: "もどる",
+    dayUnit: "日",
+    noticesTitle: "ご注意",
+
+    /* 記録 */
+    recordTitle: "記録",
+    prevDay: "前の日",
+    nextDay: "次の日",
+    goToday: "今日にもどる",
+    pickDate: "日付を選ぶ",
+    todayBadge: "今日",
+    recordedBadge: "記録あり",
+    notRecordedBadge: "まだ記録なし",
+    autosave: "入力は自動で保存されます。あとから直すこともできます。",
+    quickNoneToday: "今日は頭痛なし",
+    quickNoneDay: "この日は頭痛なし",
+    quickNoneSub: "午前・午後・夜をすべて「なし」にします",
+    painTitle: "1. 痛みの強さ",
+    painGroupLabel: "{slot}の痛みの強さ",
+    impactTitle: "2. 生活への支障（その日全体）",
+    medsTitle: "3. 頭痛のときに飲んだ薬",
+    medsEmpty: "この日の薬の記録はまだありません。",
+    medsAddHint: "飲んだ薬をタップすると追加されます（1日に何回でも）。",
+    medsAddFirstHint: "はじめは「ほかの薬の名前を入れる」から薬の名前を入れてください。次からはタップで選べます。",
+    medsNew: "ほかの薬の名前を入れる",
+    medsNamePlaceholder: "薬の名前（例：ロキソニン）",
+    medsNameEmpty: "薬の名前を入れてください",
+    medsTime: "飲んだ時刻",
+    medsEffect: "効き目",
+    medsEffectHint: "効き目は、あとで分かってから選んでもかまいません。",
+    medsRemoved: "薬の記録を削除しました",
+    mensTitle: "4. 生理",
+    mensToggle: "この日は生理だった",
+    mensHelp: "生理の日はタップして印を付けてください。生理の欄は「設定」で非表示にできます。",
+    optionalTitle: "くわしく記録する（任意）",
+    optionalHelp: "分かる範囲でよいです。あとから足すこともできます。",
+    painTypeTitle: "5. 痛み方",
+    symptomsTitle: "6. 一緒に出た症状（いくつでも）",
+    triggersTitle: "7. きっかけ（いくつでも）",
+    memoTitle: "メモ（自由に）",
+    memoPlaceholder: "例：夕方から雨。残業で帰りが遅かった。",
+    deleteDay: "この日の記録を消す",
+    deleteDayTitle: "この日の記録を消しますか？",
+    deleteDayBody: "{date} の記録をすべて消します。元に戻せません。",
+    deleteConfirm: "消す",
+    deletedDay: "この日の記録を消しました",
+
+    /* 月のまとめ（カレンダー） */
+    monthTitle: "月のまとめ",
+    prevMonth: "前の月",
+    nextMonth: "次の月",
+    thisMonth: "今月",
+    calHint: "日付をタップすると、その日の記録を開いて直せます。",
+    legendTitle: "見かた",
+    legendPain: "その日いちばん強かった痛み",
+    legendNoRecord: "空欄＝記録なし",
+    markMed: "薬",
+    markMens: "生理",
+    legendMed: "頭痛薬を飲んだ日",
+    legendMens: "生理の日",
+    statsTitle: "この月の集計",
+    statRecorded: "記録した日数",
+    statHeadache: "頭痛があった日数",
+    statSevere: "強い頭痛の日数",
+    statImpact: "生活に支障があった日数",
+    statImpactMajor: "うち大きかった日",
+    statMedDays: "頭痛薬を飲んだ日数",
+    statByMed: "薬の名前ごとの服用日数",
+    statByMedNone: "この月は薬の記録がありません。",
+    toDoctor: "医師に見せる画面を開く",
+
+    /* 医師に見せる */
+    doctorTitle: "医師に見せる",
+    doctorIntro: "受診のときは、この画面をそのまま医師にお見せください。",
+    printBtn: "印刷する（A4 1枚）",
+    printHint: "印刷の画面で用紙を「A4・縦」にしてください。iPhoneはSafariで開いているときに印刷できます。氏名と診察券番号は印刷したあとに手書きしてください。",
+    col: { day: "日", am: "午前", pm: "午後", night: "夜", meds: "飲んだ薬（時刻・効き目）", mens: "生理", impact: "支障", memo: "痛み方・症状・きっかけ・メモ" },
+    nameBlank: "氏名",
+    idBlank: "診察券番号",
+    printBlankHint: "（手書きしてください）",
+    printedOn: "印刷日",
+    legendImpact: "支障",
+    legendEffect: "効き目",
+    legendMensSymbol: "●＝生理",
+
+    /* 設定とデータ */
+    settingsTitle: "設定とデータ",
+    storageTitle: "記録の保存について",
+    storageWhere: "保存先：このスマホ（この端末のブラウザの中）",
+    persistOk: "保存の保護：有効（ブラウザが自動で消しにくくなっています）",
+    persistNo: "保存の保護：未確認（記録を続けると自動でブラウザに求めます）",
+    recordedCount: "記録した日数：{n}日",
+    lastExport: "最後の書き出し：{date}",
+    neverExported: "まだ書き出し（バックアップ）をしていません。",
+    exportTitle: "記録の書き出し（バックアップ）",
+    exportDesc: "記録をファイルにして、この端末やクラウド（iCloud・Googleドライブなど）に保存できます。機種変更やデータ削除に備えて、月に1回ほどの書き出しをおすすめします。",
+    exportFile: "ファイルに保存する",
+    exportShare: "共有メニューで送る",
+    exportCopy: "文字としてコピーする",
+    exported: "書き出しました",
+    exportFailed: "書き出せませんでした。「共有メニューで送る」や「文字としてコピーする」をお試しください。",
+    copied: "コピーしました。メモアプリなどに貼り付けて保存してください。",
+    copyFailed: "自動でコピーできませんでした。下の文字を長押しして全部選び、コピーしてください。",
+    copyFallbackLabel: "書き出した文字",
+    shareFailed: "共有できませんでした",
+    importTitle: "記録の読み込み",
+    importDesc: "書き出したファイルを読み込むと、記録を戻せます（機種変更のときなど）。",
+    importFile: "ファイルを選んで読み込む",
+    importPasteToggle: "文字を貼り付けて読み込む",
+    importPastePlaceholder: "「文字としてコピーする」で保存した文字を、ここに貼り付けてください",
+    importPasteRun: "読み込む",
+    importInvalid: "読み込めませんでした。頭痛ダイアリーで書き出したファイル（文字）を選んでください。",
+    importEmpty: "記録が入っていないファイルです。",
+    importConfirmTitle: "記録を読み込みますか？",
+    importConfirmBody: "{n}日分の記録（{from} 〜 {to}）が見つかりました。",
+    importMerge: "いまの記録に追加する",
+    importMergeHint: "同じ日付は、読み込んだ内容で上書きされます。",
+    importReplace: "いまの記録を消して置き換える",
+    imported: "読み込みました",
+    displayTitle: "表示の設定",
+    mensSetting: "生理の欄を表示する",
+    on: "表示する",
+    off: "表示しない",
+    medsCandTitle: "薬の名前の候補",
+    medsCandDesc: "記録画面でタップして選べる薬の名前です。使わないものは消せます（過去の記録は消えません）。",
+    medsCandEmpty: "まだ薬の名前はありません。記録画面で薬を追加すると、ここに並びます。",
+    homeTitle: "ホーム画面に追加する",
+    homeDesc: "ホーム画面から開くと、アプリのように使えて、記録が消えにくくなります。",
+    homeLink: "追加のしかたを見る",
+    dangerTitle: "すべての記録を消す",
+    dangerDesc: "この端末に保存されているすべての記録を消します。先に「書き出し」をしておくと安心です。",
+    deleteAll: "すべての記録を消す",
+    deleteAllTitle: "本当にすべての記録を消しますか？",
+    deleteAllBody: "{n}日分の記録と薬の名前の候補をすべて消します。元に戻せません。",
+    deleteAllConfirm: "すべて消す",
+    deletedAll: "すべての記録を消しました",
+    reminderTitle: "記録の書き出し（バックアップ）のおすすめ",
+    reminderBody: "記録はこのスマホの中だけに保存されています。月に1回ほどファイルに書き出しておくと、機種変更やデータ削除のときも安心です。",
+    reminderNow: "いま書き出す",
+    reminderLater: "あとで",
+    aboutTitle: "このページについて",
+    aboutBody: "{clinic} の患者さん向けの頭痛の記録表です。記録はこの端末の中だけに保存され、どこにも送信されません。",
+
+    /* ホーム画面に追加する方法 */
+    help: {
+      title: "ホーム画面に追加する方法",
+      intro: "ホーム画面に追加すると、アプリのように開けて、記録が消えにくくなります。追加したあとは、いつもホーム画面のアイコンから開いてください。",
+      iphoneTitle: "iPhone（Safari）の場合",
+      iphoneSteps: [
+        "Safariでこのページを開きます。",
+        "画面の下（または上）にある「共有」ボタン（四角から上向きの矢印が出ているマーク）を押します。",
+        "メニューをスクロールして「ホーム画面に追加」を選びます。",
+        "右上の「追加」を押すと、ホーム画面に「頭痛ダイアリー」のアイコンができます。",
+      ],
+      androidTitle: "Android（Chrome）の場合",
+      androidSteps: [
+        "Chromeでこのページを開きます。",
+        "右上の「⋮」（縦に点が3つ）を押します。",
+        "「ホーム画面に追加」または「アプリをインストール」を選びます。",
+        "「追加」（または「インストール」）を押すと、ホーム画面にアイコンができます。",
+      ],
+      cautionTitle: "大切な注意",
+      cautions: [
+        "iPhoneでは、ホーム画面のアイコンから開いた記録と、Safariで開いた記録は別々に保存されます。追加したあとは、いつも同じアイコンから開いてください。",
+        "すでにSafariで記録していた場合は、Safari側の「設定」→「ファイルに保存する」で書き出してから、ホーム画面のアイコンから開いて「読み込み」をすると、記録を移せます。",
+        "ブラウザの「履歴とWebサイトデータを消去」などをすると、記録も消えます。月に1回ほど「書き出し」をしておくと安心です。",
+        "プライベートブラウズ（シークレットモード）では、記録は保存されません。",
+      ],
+    },
+  },
+
+  /* ■ 見本データ（アドレスの末尾に ?demo を付けたときに表示。保存はされません） */
+  demo: {
+    medNames: ["ロキソニン", "イミグラン"],
+    memosHeadache: ["夕方から雨", "残業で帰りが遅かった", "朝から首こり", "昼ごはんを抜いた", "人混みで疲れた", "寝る前にスマホを長く見た"],
+    memosNone: ["よく眠れた", "休みの日", "散歩した"],
+  },
+};
+</script>
+<title>頭痛ダイアリー</title>
+<meta name="description" content="頭痛の記録表（頭痛ダイアリー）。記録はこの端末の中だけに保存され、どこにも送信されません。">
+<meta name="theme-color" content="#2a6f97">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="頭痛ダイアリー">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+:root{
+  --primary:#2a6f97;--primary-dark:#1d5273;--primary-light:#e4f0f7;
+  --bg:#f3f6f8;--card:#ffffff;--text:#1b1f23;--muted:#5a6672;--border:#cfd8df;
+  --p0-bg:#e4eaef;--p0-fg:#3b4650;
+  --p1-bg:#ffe08a;--p1-fg:#3d2e00;
+  --p2-bg:#f5a35b;--p2-fg:#2e1600;
+  --p3-bg:#c62828;--p3-fg:#ffffff;
+  --med-bg:#dbeafe;--med-fg:#1e3a8a;
+  --mens-bg:#fde2ec;--mens-fg:#8a1c4b;
+  --danger:#b42318;--danger-bg:#fdecea;--ok:#1b7f4a;--ok-bg:#e3f5ea;
+  --radius:12px;--nav-h:62px;
+}
+*{box-sizing:border-box}
+html{font-size:17px;-webkit-text-size-adjust:100%;background:var(--bg)}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Yu Gothic",Meiryo,"Noto Sans JP","Noto Sans CJK JP",sans-serif;color:var(--text);background:var(--bg);line-height:1.5;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 12px);overflow-wrap:anywhere}
+button,input,textarea,select{font:inherit;color:inherit}
+button{touch-action:manipulation;-webkit-tap-highlight-color:rgba(0,0,0,.08);cursor:pointer;user-select:none;-webkit-user-select:none}
+h1,h2,h3{margin:0;line-height:1.3}
+h3{font-size:1rem;margin:14px 0 6px}
+p{margin:0 0 .6em}
+ul,ol{margin:.2em 0 .6em;padding-left:1.4em}
+li{margin:.25em 0}
+:focus-visible{outline:3px solid #ffbf47;outline-offset:2px}
+.container{max-width:760px;margin:0 auto;padding:0 16px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ヘッダー */
+.app-header{background:var(--primary);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 0 10px}
+.app-header .container{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap}
+.app-header h1{font-size:1.15rem;font-weight:700}
+.app-header .clinic{font-size:.85rem;opacity:.95;display:block;font-weight:400}
+.privacy{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border-radius:999px;padding:5px 12px;font-size:.85rem;line-height:1.3}
+.privacy svg{flex:none}
+.banner{padding:10px 0;font-size:.95rem}
+.banner .container{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.banner.demo{background:#fff4ce;color:#5c4400;border-bottom:1px solid #f1d98a}
+.banner.error{background:var(--danger-bg);color:var(--danger)}
+.banner .btn{min-height:44px;padding:4px 12px;font-size:.95rem}
+
+/* カード・ボタン */
+.card{background:var(--card);border-radius:var(--radius);padding:14px 16px;margin:12px 0;box-shadow:0 1px 2px rgba(16,24,40,.06)}
+.card h2{font-size:1.05rem;margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 .opt{font-size:.95rem;color:var(--muted);font-weight:400}
+.help{color:var(--muted);font-size:.95rem;margin:4px 0 8px}
+.help.small{font-size:.95rem}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:46px;padding:8px 14px;border-radius:10px;border:1.5px solid var(--border);background:#fff;font-size:1rem;line-height:1.25;text-align:center;text-decoration:none;color:var(--text)}
+.btn:active{transform:scale(.98)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700}
+.btn.outline{border-color:var(--primary);color:var(--primary-dark);font-weight:700}
+.btn.danger{color:var(--danger);border-color:#f0b8b1;background:#fff}
+.btn.block{display:flex;width:100%}
+.btn.small{min-height:44px;padding:6px 12px;font-size:.95rem}
+.btn[disabled]{opacity:.4;cursor:default;transform:none}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.btn-row .btn{flex:1 1 auto}
+.btn-row.right{justify-content:flex-end}
+.center{text-align:center;margin:14px 0}
+.field{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.field label{font-weight:600}
+.lbl{font-weight:600;min-width:4.5em}
+
+/* 選択ボタン（セグメント・チップ） */
+.seg{display:grid;gap:6px}
+.seg.c2{grid-template-columns:repeat(2,1fr)}
+.seg.c3{grid-template-columns:repeat(3,1fr)}
+.seg.c4{grid-template-columns:repeat(4,1fr)}
+.seg .btn{padding:6px 4px;flex-direction:column;gap:1px;min-height:50px}
+.seg .btn .sub{font-size:.88rem;color:var(--muted);font-weight:400;line-height:1.2}
+.seg .btn .big{font-size:1.35rem;line-height:1.1;display:block}
+.btn[aria-pressed="true"]{border-color:var(--primary-dark);border-width:2.5px;background:var(--primary-light);font-weight:700;box-shadow:inset 0 0 0 1px var(--primary-dark)}
+.seg .btn[aria-pressed="true"]::before{content:"✓";position:absolute;top:2px;left:6px;font-size:.8rem;line-height:1;font-weight:700}
+.btn.lvl.p0[aria-pressed="true"]{background:var(--p0-bg);color:var(--p0-fg)}
+.btn.lvl.p1[aria-pressed="true"]{background:var(--p1-bg);color:var(--p1-fg)}
+.btn.lvl.p2[aria-pressed="true"]{background:var(--p2-bg);color:var(--p2-fg)}
+.btn.lvl.p3[aria-pressed="true"]{background:var(--p3-bg);color:var(--p3-fg);border-color:#7a1414;box-shadow:inset 0 0 0 1px #7a1414}
+.quick{margin:4px 0 10px;flex-direction:column;gap:2px}
+.quick .sub{display:block;font-size:.9rem;font-weight:400;color:var(--muted)}
+.quick[aria-pressed="true"] .sub{color:var(--primary-dark)}
+.slot{margin:10px 0 4px}
+.slot .slot-label{font-weight:700;margin-bottom:4px}
+.legend-pain{font-size:.95rem;color:var(--muted);margin:6px 0 10px;display:grid;gap:3px}
+.legend-pain b{color:var(--text)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:44px;padding:6px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:1rem;line-height:1.25;color:var(--text)}
+.chip[aria-pressed="true"]{border-color:var(--primary-dark);background:var(--primary-light);font-weight:700;border-width:2.5px}
+.chip.add{border-color:var(--primary);color:var(--primary-dark);font-weight:700}
+.chip.ghost{border-style:dashed;color:var(--muted)}
+.chip.small{min-height:44px;padding:4px 12px;font-size:.95rem}
+.chip:active{transform:scale(.98)}
+
+/* 日付 */
+.datebar{display:grid;grid-template-columns:62px 1fr 62px;align-items:center;gap:6px}
+.datebar .date{text-align:center}
+.datebar .date-text{font-weight:700;font-size:1.12rem}
+.nav-day{padding:4px 0;flex-direction:column;gap:0;min-height:52px;white-space:nowrap}
+.nav-day span[aria-hidden]{font-size:1.5rem;line-height:1}
+.nav-day .tiny{font-size:.8rem;color:var(--muted);white-space:nowrap}
+.badges{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:2px}
+.badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:.85rem;font-weight:700;line-height:1.5}
+.badge.today{background:var(--primary-light);color:var(--primary-dark)}
+.badge.done{background:var(--ok-bg);color:var(--ok)}
+.badge.none{background:#eef1f4;color:var(--muted)}
+input[type=time],input[type=date],input[type=text]{min-height:46px;border:1.5px solid var(--border);border-radius:10px;padding:6px 10px;font-size:1rem;background:#fff;max-width:100%;-webkit-appearance:none;appearance:none}
+input[type=text]{flex:1 1 160px}
+input[type=time],input[type=date]{min-width:8.5em}
+input::-webkit-date-and-time-value{text-align:left;min-height:1.3em}
+textarea{width:100%;min-height:84px;border:1.5px solid var(--border);border-radius:10px;padding:10px;font-size:1rem;line-height:1.5;resize:vertical;background:#fff}
+
+/* 薬 */
+.med{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fbfcfd}
+.med-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.med-name{font-weight:700;font-size:1.05rem}
+.med .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.med .row .seg{flex:1 1 240px}
+.newmed{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.newmed .btn{flex:0 0 auto}
+
+/* 折りたたみ */
+.collapse-head{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;padding:4px 0;min-height:44px;text-align:left}
+.collapse-head h2{margin:0}
+.collapse-head .chev{color:var(--muted);font-size:.95rem;flex:none;margin-left:8px}
+
+/* カレンダー */
+.monthbar{display:grid;grid-template-columns:62px 1fr 62px;align-items:center;gap:6px;margin-bottom:8px}
+.monthbar .month{text-align:center;font-weight:700;font-size:1.15rem}
+.monthbar .thismonth-btn{display:block;margin:4px auto 0;font-weight:400}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-size:.85rem;color:var(--muted);margin-bottom:4px}
+.cal-head .sun{color:#b42318}.cal-head .sat{color:#1e40af}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-cell{position:relative;min-height:64px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:18px 2px 16px;display:flex;align-items:center;justify-content:center;color:var(--text)}
+.cal-cell.empty{background:transparent;border-color:transparent}
+.cal-cell.today{border-color:var(--primary);border-width:2px}
+.cal-cell.future{background:#f7f9fb}
+.cal-cell[disabled]{cursor:default}
+.cal-cell .d{position:absolute;top:3px;left:5px;font-size:.82rem;color:var(--muted);line-height:1;font-weight:600}
+.cal-cell.sun .d{color:#b42318}.cal-cell.sat .d{color:#1e40af}
+.sym{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-weight:700;font-size:1rem;line-height:1;flex:none}
+.sym.p0{background:var(--p0-bg);color:var(--p0-fg)}
+.sym.p1{background:var(--p1-bg);color:var(--p1-fg)}
+.sym.p2{background:var(--p2-bg);color:var(--p2-fg)}
+.sym.p3{background:var(--p3-bg);color:var(--p3-fg)}
+.cal-cell .marks{position:absolute;bottom:2px;left:1px;right:1px;display:flex;justify-content:center;gap:2px}
+.mark{font-size:.7rem;line-height:1.25;border-radius:4px;padding:0 3px;font-weight:700;white-space:nowrap}
+.mark.med{background:var(--med-bg);color:var(--med-fg)}
+.mark.mens{background:var(--mens-bg);color:var(--mens-fg)}
+.legend{font-size:.95rem;color:var(--muted);margin-top:10px;display:grid;gap:6px}
+.legend .row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.legend .item{display:inline-flex;align-items:center;gap:4px}
+.legend b{color:var(--text)}
+
+/* 集計 */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fbfcfd}
+.stat .k{font-size:.95rem;color:var(--muted);line-height:1.3}
+.stat .v{font-size:1.55rem;font-weight:700;line-height:1.2}
+.stat .v small{font-size:.9rem;font-weight:400}
+.stat .note{font-size:.95rem;color:var(--muted)}
+.medlist{margin:6px 0 0;padding:0;list-style:none}
+.medlist li{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+.medlist li:last-child{border-bottom:0}
+.medlist .n{font-weight:700}
+.doctor-note{margin-top:10px;padding:10px 12px;background:#f7f9fb;border-radius:8px;font-size:.95rem}
+
+/* 医師に見せる */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:8px -16px 4px;padding:0 16px}
+.doc{border-collapse:collapse;width:100%;table-layout:fixed;font-size:.88rem;background:#fff}
+.doc th,.doc td{border:1px solid var(--border);padding:4px 3px;text-align:center;vertical-align:middle;overflow-wrap:anywhere;word-break:break-all}
+.doc th{background:#eef3f6;font-weight:700;line-height:1.2}
+.doc td.l{text-align:left}
+.doc td.day{font-weight:600;line-height:1.2}
+.doc td.day small{font-weight:400;color:var(--muted);margin-left:1px;display:block;font-size:.8rem}
+.doc tr.sun td.day{color:#b42318}.doc tr.sat td.day{color:#1e40af}
+.doc tr.future td{color:var(--muted);background:#fafbfc}
+.doc td.p0{background:var(--p0-bg);color:var(--p0-fg)}
+.doc td.p1{background:var(--p1-bg);color:var(--p1-fg);font-weight:700}
+.doc td.p2{background:var(--p2-bg);color:var(--p2-fg);font-weight:700}
+.doc td.p3{background:var(--p3-bg);color:var(--p3-fg);font-weight:700}
+.doc td.mens{color:var(--mens-fg);font-weight:700}
+.stats.compact .stat{padding:8px 10px}
+.stats.compact .v{font-size:1.3rem}
+
+/* 設定 */
+.status-list{margin:0;padding:0;list-style:none}
+.status-list li{padding:6px 0;border-bottom:1px solid var(--border)}
+.status-list li:last-child{border-bottom:0}
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;min-height:52px;text-align:left}
+.switch .state{font-weight:700;color:var(--muted)}
+.switch[aria-checked="true"] .state{color:var(--primary-dark)}
+.candlist{list-style:none;margin:0;padding:0}
+.candlist li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.candlist li:last-child{border-bottom:0}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.filebtn{position:relative;overflow:hidden}
+.filebtn:focus-within{outline:3px solid #ffbf47;outline-offset:2px}
+.reminder{border:2px solid #e8c660;background:#fff8e1}
+.reminder h2{color:#5c4400}
+.step-list li{margin:.4em 0}
+.danger-zone{border:1px solid #f0b8b1}
+.footer{color:var(--muted);font-size:.9rem;text-align:center;margin:18px 0 6px}
+
+/* 注意書き */
+.notice{border-left:4px solid var(--primary);background:#fff;padding:10px 12px;margin:10px 0;font-size:.95rem;border-radius:0 8px 8px 0}
+.notice.emergency{border-left-color:var(--danger);background:#fff7f6}
+.notice.privacy-note{border-left-color:var(--ok)}
+
+/* 下のナビ */
+.nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom);z-index:20}
+.nav .container{display:flex;padding:0}
+.nav button{flex:1;min-height:var(--nav-h);border:0;background:none;color:var(--muted);font-size:clamp(13px,3.8vw,16px);font-weight:600;border-top:3px solid transparent;padding:4px 2px 6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;line-height:1.2}
+.nav button[aria-current="page"]{color:var(--primary-dark);border-top-color:var(--primary)}
+.nav svg{width:22px;height:22px;flex:none}
+
+/* モーダル・トースト */
+#modal:empty{display:none}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{background:#fff;border-radius:14px;padding:18px;max-width:460px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.modal h3{font-size:1.1rem;margin:0 0 10px}
+.modal .btn-row{flex-direction:column}
+.modal .btn-row .btn{width:100%}
+.modal .hint{font-size:.88rem;color:var(--muted);margin:-4px 0 6px}
+.toast{position:fixed;left:50%;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);transform:translateX(-50%);background:#1b1f23;color:#fff;padding:10px 18px;border-radius:999px;font-size:.95rem;opacity:0;transition:opacity .2s;pointer-events:none;z-index:60;max-width:92vw;text-align:center}
+.toast.show{opacity:.95}
+
+@media (min-width:600px){
+  .stats{grid-template-columns:repeat(3,1fr)}
+  .cal-cell{min-height:72px}
+  .doc{font-size:.95rem}
+  .doc th,.doc td{padding:5px 6px}
+  .doc td.day small{display:inline;font-size:.85rem}
+}
+@media (max-width:359px){
+  .seg.c4{gap:4px}
+  .seg.c4 .btn{padding:6px 0;font-size:.95rem}
+  .datebar,.monthbar{grid-template-columns:56px 1fr 56px}
+}
+
+/* 印刷（A4 縦 1枚） */
+#print-sheet{display:none}
+@media print{
+  @page{size:A4 portrait;margin:10mm}
+  html{font-size:10pt;background:#fff}
+  body{background:#fff;padding:0!important;color:#000;line-height:1.3}
+  #app,#modal,#toast,.nav{display:none!important}
+  #print-sheet{display:block!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .ph{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1.5pt solid #000;padding-bottom:1.5mm;gap:4mm}
+  .ph .t{font-size:14pt;font-weight:700}
+  .ph .t span{font-size:11pt;font-weight:400;margin-left:3mm}
+  .ph .c{font-size:9pt;text-align:right}
+  .blanks{font-size:10pt;margin:2mm 0 2mm;display:flex;align-items:flex-end;gap:5mm;flex-wrap:wrap}
+  .blanks .line{display:inline-block;border-bottom:1pt solid #000;width:58mm;height:7mm;vertical-align:bottom;margin-left:1.5mm}
+  .blanks .line.short{width:36mm}
+  .blanks .hint{font-size:8pt;color:#333}
+  .pt{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9pt}
+  .pt th,.pt td{border:0.5pt solid #000;padding:0.7mm 1mm;line-height:1.25;vertical-align:middle;text-align:center;overflow:hidden}
+  .pt th{background:#e6e6e6;font-weight:700}
+  .pt td.l{text-align:left}
+  .pt td.day{white-space:nowrap}
+  .pt td.day small{font-size:7.5pt;margin-left:0.5mm}
+  .pt td.p0{color:#555}
+  .pt td.p1{background:#fff0b3}
+  .pt td.p2{background:#ffd3a6;font-weight:700}
+  .pt td.p3{background:#f3a6a6;font-weight:700}
+  .pt .cell{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;word-break:break-all}
+  .pt tr{page-break-inside:avoid;break-inside:avoid}
+  .ps{display:grid;grid-template-columns:repeat(5,1fr);gap:1.5mm;margin-top:2.5mm;font-size:9pt}
+  .ps .box{border:0.5pt solid #000;padding:1mm 1.5mm;border-radius:1mm}
+  .ps .box .k{font-size:7.5pt;line-height:1.2}
+  .ps .box .v{font-size:12pt;font-weight:700;line-height:1.2}
+  .ps .box .v small{font-size:8pt;font-weight:400}
+  .ps .box.wide{grid-column:1 / -1;font-size:9pt}
+  .ps .box.wide b{margin-right:2mm}
+  .pl{font-size:7.5pt;margin-top:2mm;line-height:1.4}
+  .pn{font-size:7.5pt;margin-top:1.5mm;border-top:0.5pt solid #000;padding-top:1mm;display:flex;justify-content:space-between;gap:4mm}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="app-header">
+    <div class="container">
+      <h1><span id="appTitle">頭痛ダイアリー</span><span class="clinic" id="clinicName"></span></h1>
+      <span class="privacy" id="privacyBadge"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" fill="currentColor"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg><span id="privacyText"></span></span>
+    </div>
+  </header>
+  <div id="banners"></div>
+  <main class="container" id="view"></main>
+  <nav class="nav" aria-label="画面の切り替え"><div class="container" id="navButtons"></div></nav>
+</div>
+<div id="print-sheet" aria-hidden="true"></div>
+<div id="modal"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+'use strict';
+const C = CONFIG, T = C.text, O = C.options, N = C.notices;
+const SLOTS = O.timeSlots;
+const WD = ['日', '月', '火', '水', '木', '金', '土'];
+const DEMO = new URLSearchParams(location.search).has('demo');
+const $ = (s, el) => (el || document).querySelector(s);
+
+/* ---------- ユーティリティ ---------- */
+const pad2 = n => (n < 10 ? '0' : '') + n;
+const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const parseYmd = s => { const p = s.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]); };
+const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && ymd(parseYmd(s)) === s;
+const todayStr = () => ymd(new Date());
+const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const addMonths = (ym, n) => { const p = ym.split('-').map(Number); const d = new Date(p[0], p[1] - 1 + n, 1); return d.getFullYear() + '-' + pad2(d.getMonth() + 1); };
+const fmtDate = s => { const d = parseYmd(s); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日（' + WD[d.getDay()] + '）'; };
+const fmtMonth = ym => { const p = ym.split('-').map(Number); return p[0] + '年' + p[1] + '月'; };
+const fmtIsoDate = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'; };
+const nowHM = () => { const d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (s, vars) => String(s).replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] != null ? vars[k] : ''));
+const levelOf = v => O.painLevels.find(l => l.value === v);
+const impactOf = v => O.impactLevels.find(l => l.value === v);
+const effectOf = id => O.effects.find(e => e.id === id);
+const shortTime = t => (t || '').replace(/^0(\d:)/, '$1');
+
+/* ---------- データ ---------- */
+function emptyData() {
+  return {
+    version: 1,
+    settings: { showMenstruation: C.features.menstruationDefault, firstUseAt: null, lastExportAt: null, lastReminderAt: null },
+    meds: [],
+    days: {},
+  };
+}
+function emptyDay() {
+  const pain = {};
+  SLOTS.forEach(s => { pain[s.id] = null; });
+  return { pain, impact: null, meds: [], menstruation: false, painType: null, symptoms: [], triggers: [], memo: '' };
+}
+function isEmptyDay(day) {
+  return SLOTS.every(s => day.pain[s.id] == null) && day.impact == null && !day.meds.length && !day.menstruation
+    && !day.painType && !day.symptoms.length && !day.triggers.length && !(day.memo && day.memo.trim());
+}
+function hasOptional(day) {
+  return !!(day.painType || day.symptoms.length || day.triggers.length || (day.memo && day.memo.trim()));
+}
+function maxPain(day) {
+  const vals = SLOTS.map(s => day.pain[s.id]).filter(v => v != null);
+  return vals.length ? Math.max.apply(null, vals) : null;
+}
+/* 読み込んだデータを安全な形に整える（壊れた値・知らない値は捨てる） */
+function normalize(raw) {
+  const d = emptyData();
+  if (!raw || typeof raw !== 'object') return d;
+  if (raw.settings && typeof raw.settings === 'object') {
+    const s = raw.settings;
+    if (typeof s.showMenstruation === 'boolean') d.settings.showMenstruation = s.showMenstruation;
+    ['firstUseAt', 'lastExportAt', 'lastReminderAt'].forEach(k => { if (typeof s[k] === 'string' && !isNaN(Date.parse(s[k]))) d.settings[k] = s[k]; });
+  }
+  if (Array.isArray(raw.meds)) d.meds = raw.meds.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 40)).slice(0, 60);
+  if (raw.days && typeof raw.days === 'object') {
+    Object.keys(raw.days).forEach(k => {
+      const v = raw.days[k];
+      if (!validDate(k) || !v || typeof v !== 'object') return;
+      const day = emptyDay();
+      SLOTS.forEach(s => { const p = v.pain && v.pain[s.id]; day.pain[s.id] = levelOf(p) ? p : null; });
+      day.impact = impactOf(v.impact) ? v.impact : null;
+      day.meds = Array.isArray(v.meds) ? v.meds.filter(m => m && typeof m.name === 'string' && m.name.trim()).map(m => ({
+        name: m.name.trim().slice(0, 40),
+        time: typeof m.time === 'string' && /^\d{2}:\d{2}$/.test(m.time) ? m.time : '',
+        effect: effectOf(m.effect) ? m.effect : null,
+      })).slice(0, 20) : [];
+      day.menstruation = v.menstruation === true;
+      day.painType = O.painTypes.some(p => p.id === v.painType) ? v.painType : null;
+      day.symptoms = Array.isArray(v.symptoms) ? O.symptoms.map(o => o.id).filter(id => v.symptoms.indexOf(id) >= 0) : [];
+      day.triggers = Array.isArray(v.triggers) ? O.triggers.map(o => o.id).filter(id => v.triggers.indexOf(id) >= 0) : [];
+      day.memo = typeof v.memo === 'string' ? v.memo.slice(0, 500) : '';
+      if (typeof v.updatedAt === 'string') day.updatedAt = v.updatedAt;
+      if (!isEmptyDay(day)) d.days[k] = day;
+    });
+  }
+  // 記録に出てくる薬の名前は候補にも入れておく
+  Object.keys(d.days).forEach(k => d.days[k].meds.forEach(m => { if (d.meds.indexOf(m.name) < 0 && d.meds.length < 60) d.meds.push(m.name); }));
+  return d;
+}
+
+let storageOk = true;
+function storageAvailable() {
+  try { const k = '__hd_test__'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return true; } catch (e) { return false; }
+}
+function loadData() {
+  if (DEMO) return makeDemoData();
+  try {
+    const raw = localStorage.getItem(C.app.storageKey);
+    if (!raw) return emptyData();
+    return normalize(JSON.parse(raw));
+  } catch (e) {
+    console.warn('load failed', e);
+    return emptyData();
+  }
+}
+let data = loadData();
+
+function save() {
+  if (!data.settings.firstUseAt) data.settings.firstUseAt = new Date().toISOString();
+  if (DEMO) return true;
+  try {
+    localStorage.setItem(C.app.storageKey, JSON.stringify(data));
+    storageOk = true;
+    requestPersist();
+    return true;
+  } catch (e) {
+    console.warn('save failed', e);
+    storageOk = false;
+    toast(T.saveError, 3500);
+    return false;
+  }
+}
+function getDay(date) { return data.days[date] || null; }
+function ensureDay(date) { if (!data.days[date]) data.days[date] = emptyDay(); return data.days[date]; }
+function commitDay(date, silent) {
+  const d = data.days[date];
+  if (d && isEmptyDay(d)) delete data.days[date];
+  else if (d) d.updatedAt = new Date().toISOString();
+  if (save() && !silent) savedToast();
+}
+
+/* 保存の永続化をブラウザに求める（対応ブラウザのみ・1回だけ） */
+let persistAsked = false, persistedState = null;
+function requestPersist() {
+  if (DEMO || persistAsked || !(navigator.storage && navigator.storage.persist)) return;
+  persistAsked = true;
+  navigator.storage.persist().then(g => { persistedState = g; if (route.view === 'settings') render(); }).catch(() => {});
+}
+if (!DEMO && navigator.storage && navigator.storage.persisted) {
+  navigator.storage.persisted().then(p => { persistedState = p; if (route.view === 'settings') render(); }).catch(() => {});
+}
+
+/* ---------- 集計 ---------- */
+function monthStats(ym) {
+  const p = ym.split('-').map(Number);
+  const n = daysInMonth(p[0], p[1]);
+  const st = { daysInMonth: n, recorded: 0, headache: 0, severe: 0, impactAny: 0, impactMajor: 0, medDays: 0, byMed: [] };
+  const byMed = {};
+  for (let d = 1; d <= n; d++) {
+    const day = data.days[ym + '-' + pad2(d)];
+    if (!day) continue;
+    st.recorded++;
+    const mp = maxPain(day);
+    if (mp != null && mp >= 1) st.headache++;
+    if (mp === 3) st.severe++;
+    if (day.impact != null && day.impact >= 1) st.impactAny++;
+    if (day.impact === 2) st.impactMajor++;
+    if (day.meds.length) {
+      st.medDays++;
+      const names = {};
+      day.meds.forEach(m => { names[m.name] = true; });
+      Object.keys(names).forEach(nm => { byMed[nm] = (byMed[nm] || 0) + 1; });
+    }
+  }
+  st.byMed = Object.keys(byMed).map(nm => ({ name: nm, days: byMed[nm] })).sort((a, b) => b.days - a.days || a.name.localeCompare(b.name, 'ja'));
+  return st;
+}
+
+/* ---------- 見本データ（?demo） ---------- */
+function makeDemoData() {
+  const d = emptyData();
+  d.meds = C.demo.medNames.slice();
+  let seed = 2463534242;
+  const rnd = () => { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return (seed % 100000) / 100000; };
+  const pick = arr => arr[Math.floor(rnd() * arr.length)];
+  const today = todayStr();
+  const start = addMonths(today.slice(0, 7), -1) + '-01';
+  for (let key = start; key <= today; key = addDays(key, 1)) {
+    const dayNum = Number(key.slice(8));
+    const r = rnd();
+    const mens = dayNum >= 12 && dayNum <= 16;
+    if (r < 0.08) continue; // 記録しなかった日
+    const day = emptyDay();
+    day.menstruation = mens;
+    if (r < 0.6 && !(mens && rnd() < 0.6)) {
+      SLOTS.forEach(s => { day.pain[s.id] = 0; });
+      day.impact = 0;
+      if (rnd() < 0.15) day.memo = pick(C.demo.memosNone);
+    } else {
+      const sev = rnd();
+      const max = sev < 0.45 ? 1 : sev < 0.8 ? 2 : 3;
+      const startSlot = Math.floor(rnd() * 3);
+      const pain = [0, 0, 0];
+      pain[startSlot] = max;
+      if (startSlot < 2 && rnd() < 0.6) pain[startSlot + 1] = Math.max(1, max - (rnd() < 0.5 ? 1 : 0));
+      if (startSlot === 0 && rnd() < 0.3) pain[2] = 1;
+      SLOTS.forEach((s, i) => { day.pain[s.id] = pain[i]; });
+      day.impact = max === 3 ? 2 : max === 2 ? (rnd() < 0.6 ? 1 : 2) : (rnd() < 0.3 ? 1 : 0);
+      if (max >= 2 || rnd() < 0.4) {
+        const name = max >= 2 && rnd() < 0.5 ? d.meds[1] : d.meds[0];
+        const hour = startSlot === 0 ? 8 + Math.floor(rnd() * 4) : startSlot === 1 ? 13 + Math.floor(rnd() * 5) : 19 + Math.floor(rnd() * 3);
+        const eff = rnd();
+        day.meds.push({ name, time: pad2(hour) + ':' + pad2([0, 15, 30, 45][Math.floor(rnd() * 4)]), effect: eff < 0.5 ? 'good' : eff < 0.85 ? 'some' : 'none' });
+        if (max === 3 && rnd() < 0.6) day.meds.push({ name: d.meds[0], time: pad2(Math.min(23, hour + 5)) + ':00', effect: rnd() < 0.5 ? 'some' : 'none' });
+      }
+      day.painType = max >= 2 ? (rnd() < 0.75 ? 'throb' : 'tight') : (rnd() < 0.6 ? 'tight' : 'throb');
+      if (max >= 2) {
+        if (rnd() < 0.6) day.symptoms.push('nausea');
+        if (rnd() < 0.5) day.symptoms.push('photo');
+        if (rnd() < 0.3) day.symptoms.push('phono');
+        if (rnd() < 0.25) day.symptoms.push('aura');
+      }
+      if (rnd() < 0.2) day.symptoms.push('dizzy');
+      if (rnd() < 0.7) day.triggers.push(pick(O.triggers).id);
+      if (rnd() < 0.2) day.triggers.push(pick(O.triggers).id);
+      day.triggers = O.triggers.map(t => t.id).filter(id => day.triggers.indexOf(id) >= 0);
+      if (rnd() < 0.45) day.memo = pick(C.demo.memosHeadache);
+    }
+    day.updatedAt = new Date(parseYmd(key).getTime() + 22 * 3600000).toISOString();
+    d.days[key] = day;
+  }
+  d.settings.firstUseAt = new Date(Date.now() - 50 * 86400000).toISOString();
+  d.settings.lastExportAt = new Date(Date.now() - 40 * 86400000).toISOString();
+  return d;
+}
+
+/* ---------- 画面の状態・ルーティング ---------- */
+const route = { view: 'record', date: todayStr(), month: todayStr().slice(0, 7) };
+const VIEWS = ['record', 'month', 'doctor', 'settings', 'help'];
+const ui = { optionalOpen: false, optionalTouched: false, newMedOpen: false, newMedDraft: '', pasteOpen: false, copyFallback: '' };
+let lastView = null, lastDate = null;
+
+function parseHash() {
+  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
+  const parts = h.split('/');
+  route.view = VIEWS.indexOf(parts[0]) >= 0 ? parts[0] : 'record';
+  const arg = parts[1] || '';
+  const today = todayStr();
+  if (route.view === 'record') {
+    if (validDate(arg)) route.date = arg > today ? today : arg;
+    else if (!arg) route.date = route.date || today;
+  } else if (route.view === 'month' || route.view === 'doctor') {
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(arg)) route.month = arg;
+  }
+  if (route.date > today) route.date = today;
+}
+function go(view, arg) {
+  const target = '#' + view + (arg ? '/' + arg : '');
+  if (location.hash === target) { parseHash(); render(); }
+  else location.hash = target;
+}
+window.addEventListener('hashchange', () => { parseHash(); render(); });
+
+/* ---------- 部品 ---------- */
+function btn(o) {
+  const pressed = !!o.pressed;
+  return '<button type="button" class="btn ' + (o.cls || '') + '" aria-pressed="' + pressed + '" data-action="' + o.action + '" ' + (o.attrs || '') + '>'
+    + '<span class="lab">' + o.label + '</span>' + (o.sub ? '<span class="sub">' + o.sub + '</span>' : '') + '</button>';
+}
+function chip(o) {
+  const pressed = !!o.pressed;
+  return '<button type="button" class="chip ' + (o.cls || '') + '" aria-pressed="' + pressed + '" data-action="' + o.action + '" ' + (o.attrs || '') + '>' + (pressed ? '✓ ' : '') + o.label + '</button>';
+}
+function noticesHtml() {
+  let h = '';
+  if (N.disclaimer) h += '<div class="notice">' + esc(N.disclaimer) + '</div>';
+  if (N.emergency) h += '<div class="notice emergency">' + esc(N.emergency) + '</div>';
+  return h;
+}
+function reminderDue() {
+  const s = data.settings;
+  if (Object.keys(data.days).length < C.app.exportReminderMinRecords) return false;
+  const times = [s.lastExportAt, s.lastReminderAt, s.firstUseAt].filter(Boolean).map(x => Date.parse(x)).filter(x => !isNaN(x));
+  if (!times.length) return false;
+  return Date.now() - Math.max.apply(null, times) > C.app.exportReminderDays * 86400000;
+}
+function reminderCard() {
+  return '<section class="card reminder"><h2>' + esc(T.reminderTitle) + '</h2><p>' + esc(T.reminderBody) + '</p>'
+    + '<div class="btn-row"><button type="button" class="btn primary" data-action="reminder-now">' + esc(T.reminderNow) + '</button>'
+    + '<button type="button" class="btn" data-action="reminder-later">' + esc(T.reminderLater) + '</button></div></section>';
+}
+function medsText(day) {
+  return day.meds.map(m => {
+    const e = effectOf(m.effect);
+    return (m.time ? shortTime(m.time) + ' ' : '') + esc(m.name) + (e ? ' ' + e.symbol : '');
+  }).join('<br>');
+}
+function memoText(day) {
+  const parts = [];
+  const pt = O.painTypes.find(p => p.id === day.painType);
+  if (pt) parts.push(esc(pt.short));
+  const sy = O.symptoms.filter(s => day.symptoms.indexOf(s.id) >= 0).map(s => esc(s.short));
+  if (sy.length) parts.push(sy.join('・'));
+  const tr = O.triggers.filter(t => day.triggers.indexOf(t.id) >= 0).map(t => esc(t.label));
+  if (tr.length) parts.push(tr.join('・'));
+  if (day.memo && day.memo.trim()) parts.push(esc(day.memo.trim()));
+  return parts.join('／');
+}
+function tableRows(ym) {
+  const p = ym.split('-').map(Number);
+  const n = daysInMonth(p[0], p[1]);
+  const today = todayStr();
+  let rows = '';
+  for (let d = 1; d <= n; d++) {
+    const key = ym + '-' + pad2(d);
+    const dow = new Date(p[0], p[1] - 1, d).getDay();
+    const day = data.days[key];
+    const cls = (dow === 0 ? 'sun' : dow === 6 ? 'sat' : '') + (key > today ? ' future' : '');
+    const pain = SLOTS.map(s => {
+      const v = day ? day.pain[s.id] : null;
+      const l = v == null ? null : levelOf(v);
+      return l ? '<td class="' + l.cls + '">' + l.symbol + '</td>' : '<td></td>';
+    }).join('');
+    const imp = day && day.impact != null ? impactOf(day.impact).short : '';
+    rows += '<tr class="' + cls + '"><td class="day">' + d + '<small>' + WD[dow] + '</small></td>' + pain
+      + '<td class="l"><div class="cell">' + (day ? medsText(day) : '') + '</div></td>'
+      + '<td class="mens">' + (day && day.menstruation ? '●' : '') + '</td>'
+      + '<td>' + imp + '</td>'
+      + '<td class="l"><div class="cell">' + (day ? memoText(day) : '') + '</div></td></tr>';
+  }
+  return rows;
+}
+function tableHead() {
+  const c = T.col;
+  return '<thead><tr><th>' + c.day + '</th>' + SLOTS.map(s => '<th>' + esc(s.label) + '</th>').join('') + '<th>' + c.meds + '</th><th>' + c.mens + '</th><th>' + c.impact + '</th><th>' + c.memo + '</th></tr></thead>';
+}
+function legendText() {
+  const lv = O.painLevels.filter(l => l.value > 0).map(l => l.symbol + '＝' + l.label + (l.desc ? '（' + l.desc + '）' : '')).join('　');
+  const none = O.painLevels.find(l => l.value === 0);
+  const imp = O.impactLevels.filter(l => l.value > 0).map(l => l.short + '＝' + l.label + (l.sub ? '（' + l.sub + '）' : '')).join('　');
+  const eff = O.effects.map(e => e.symbol + e.label).join('　');
+  return esc(T.legendPain) + '：' + esc(lv) + '　' + (none ? esc(none.symbol + '＝' + none.label) + '　' : '') + esc(T.legendNoRecord)
+    + '／' + esc(T.legendImpact) + '：' + esc(imp) + '／' + esc(T.legendEffect) + '：' + esc(eff) + '／' + esc(T.legendMensSymbol);
+}
+function statsHtml(st, compact) {
+  const u = esc(T.dayUnit);
+  let h = '<div class="stats' + (compact ? ' compact' : '') + '">'
+    + '<div class="stat"><div class="k">' + esc(T.statRecorded) + '</div><div class="v">' + st.recorded + '<small>／' + st.daysInMonth + u + '</small></div></div>'
+    + '<div class="stat"><div class="k">' + esc(T.statHeadache) + '</div><div class="v">' + st.headache + '<small>' + u + '</small></div></div>'
+    + '<div class="stat"><div class="k">' + esc(T.statSevere) + '</div><div class="v">' + st.severe + '<small>' + u + '</small></div></div>'
+    + '<div class="stat"><div class="k">' + esc(T.statImpact) + '</div><div class="v">' + st.impactAny + '<small>' + u + '</small></div><div class="note">' + esc(T.statImpactMajor) + ' ' + st.impactMajor + u + '</div></div>'
+    + '<div class="stat"><div class="k">' + esc(T.statMedDays) + '</div><div class="v">' + st.medDays + '<small>' + u + '</small></div></div>'
+    + '</div>';
+  h += '<h3>' + esc(T.statByMed) + '</h3>';
+  if (st.byMed.length) h += '<ul class="medlist">' + st.byMed.map(m => '<li><span class="n">' + esc(m.name) + '</span><span>' + m.days + u + '</span></li>').join('') + '</ul>';
+  else h += '<p class="help">' + esc(T.statByMedNone) + '</p>';
+  if (N.medicationNote) h += '<div class="doctor-note">' + esc(N.medicationNote) + '</div>';
+  return h;
+}
+function monthBar(ym) {
+  const cur = todayStr().slice(0, 7);
+  return '<div class="monthbar">'
+    + '<button type="button" class="btn nav-day" data-action="month-prev" aria-label="' + esc(T.prevMonth) + '"><span aria-hidden="true">‹</span><span class="tiny">' + esc(T.prevMonth) + '</span></button>'
+    + '<div class="month">' + fmtMonth(ym) + (ym !== cur ? '<button type="button" class="btn small thismonth-btn" data-action="month-now">' + esc(T.thisMonth) + '</button>' : '') + '</div>'
+    + '<button type="button" class="btn nav-day" data-action="month-next" aria-label="' + esc(T.nextMonth) + '" ' + (ym >= cur ? 'disabled' : '') + '><span aria-hidden="true">›</span><span class="tiny">' + esc(T.nextMonth) + '</span></button>'
+    + '</div>';
+}
+
+/* ---------- 画面：記録 ---------- */
+function viewRecord(date) {
+  const today = todayStr();
+  const isToday = date === today;
+  const stored = getDay(date);
+  const day = stored || emptyDay();
+  const allNone = SLOTS.every(s => day.pain[s.id] === 0);
+  const optOpen = ui.optionalTouched ? ui.optionalOpen : hasOptional(day);
+  let h = '';
+  if (reminderDue()) h += reminderCard();
+
+  // 日付
+  h += '<section class="card"><div class="datebar">'
+    + '<button type="button" class="btn nav-day" data-action="date-prev" aria-label="' + esc(T.prevDay) + '"><span aria-hidden="true">‹</span><span class="tiny">' + esc(T.prevDay) + '</span></button>'
+    + '<div class="date"><div class="date-text">' + fmtDate(date) + '</div><div class="badges">'
+    + (isToday ? '<span class="badge today">' + esc(T.todayBadge) + '</span>' : '')
+    + '<span class="badge ' + (stored ? 'done' : 'none') + '">' + esc(stored ? T.recordedBadge : T.notRecordedBadge) + '</span></div></div>'
+    + '<button type="button" class="btn nav-day" data-action="date-next" aria-label="' + esc(T.nextDay) + '" ' + (isToday ? 'disabled' : '') + '><span aria-hidden="true">›</span><span class="tiny">' + esc(T.nextDay) + '</span></button>'
+    + '</div><div class="btn-row">'
+    + (isToday ? '' : '<button type="button" class="btn small" data-action="date-today">' + esc(T.goToday) + '</button>')
+    + '<div class="field"><label for="datePick">' + esc(T.pickDate) + '</label><input id="datePick" type="date" value="' + date + '" max="' + today + '" data-change="date-pick"></div>'
+    + '</div><p class="help">' + esc(T.autosave) + '</p></section>';
+
+  // 1. 痛みの強さ
+  h += '<section class="card"><h2>' + esc(T.painTitle) + '</h2>'
+    + '<button type="button" class="btn block quick ' + (allNone ? 'outline' : '') + '" data-action="quick-none" aria-pressed="' + allNone + '"><span>' + (allNone ? '✓ ' : '') + esc(isToday ? T.quickNoneToday : T.quickNoneDay) + '</span><span class="sub">' + esc(T.quickNoneSub) + '</span></button>'
+    + '<div class="legend-pain">' + O.painLevels.filter(l => l.desc).map(l => '<div><span class="sym ' + l.cls + '">' + esc(l.symbol) + '</span> <b>' + esc(l.label) + '</b>：' + esc(l.desc) + '</div>').join('') + '</div>'
+    + SLOTS.map(s => '<div class="slot"><div class="slot-label" id="slot-' + s.id + '">' + esc(s.label) + '</div><div class="seg c4" role="group" aria-label="' + esc(fmt(T.painGroupLabel, { slot: s.label })) + '">'
+      + O.painLevels.map(l => btn({ cls: 'lvl ' + l.cls, pressed: day.pain[s.id] === l.value, action: 'pain', attrs: 'data-slot="' + s.id + '" data-value="' + l.value + '"', label: esc(l.label) })).join('')
+      + '</div></div>').join('')
+    + '</section>';
+
+  // 2. 生活への支障
+  h += '<section class="card"><h2>' + esc(T.impactTitle) + '</h2><div class="seg c3" role="group" aria-label="' + esc(T.impactTitle) + '">'
+    + O.impactLevels.map(l => btn({ pressed: day.impact === l.value, action: 'impact', attrs: 'data-value="' + l.value + '"', label: esc(l.label), sub: esc(l.sub) })).join('')
+    + '</div></section>';
+
+  // 3. 薬
+  h += '<section class="card"><h2>' + esc(T.medsTitle) + '</h2><p class="help">' + esc(N.preventiveMedNote) + '</p>';
+  if (day.meds.length) h += day.meds.map((m, i) => medRow(m, i, isToday)).join('');
+  else h += '<p class="help">' + esc(T.medsEmpty) + '</p>';
+  h += '<div class="add-med"><p class="help small">' + esc(data.meds.length ? T.medsAddHint : T.medsAddFirstHint) + '</p><div class="chips">'
+    + data.meds.map(nm => '<button type="button" class="chip add" data-action="med-add" data-name="' + esc(nm) + '">＋ ' + esc(nm) + '</button>').join('')
+    + '<button type="button" class="chip ghost" data-action="med-new-toggle" aria-expanded="' + ui.newMedOpen + '">' + esc(T.medsNew) + '</button></div>';
+  if (ui.newMedOpen) h += '<div class="newmed"><input type="text" id="newMedName" value="' + esc(ui.newMedDraft) + '" placeholder="' + esc(T.medsNamePlaceholder) + '" aria-label="' + esc(T.medsNamePlaceholder) + '" autocomplete="off" maxlength="40" data-input="newmed" enterkeyhint="done"><button type="button" class="btn primary" data-action="med-new-add">' + esc(T.add) + '</button></div>';
+  h += '</div></section>';
+
+  // 4. 生理
+  if (data.settings.showMenstruation) {
+    h += '<section class="card"><h2>' + esc(T.mensTitle) + '</h2><div class="seg c2" role="group" aria-label="' + esc(T.mensTitle) + '">'
+      + btn({ pressed: day.menstruation, action: 'mens', label: esc(T.mensToggle) })
+      + '</div><p class="help small" style="margin-top:8px">' + esc(T.mensHelp) + '</p></section>';
+  }
+
+  // 5〜7 任意
+  h += '<section class="card"><button type="button" class="collapse-head" data-action="optional-toggle" aria-expanded="' + optOpen + '"><h2>' + esc(T.optionalTitle) + '</h2><span class="chev" aria-hidden="true">' + (optOpen ? '▲ 閉じる' : '▼ 開く') + '</span></button>';
+  if (optOpen) {
+    h += '<p class="help">' + esc(T.optionalHelp) + '</p>'
+      + '<h3>' + esc(T.painTypeTitle) + '</h3><div class="chips" role="group" aria-label="' + esc(T.painTypeTitle) + '">' + O.painTypes.map(p => chip({ pressed: day.painType === p.id, action: 'paintype', attrs: 'data-value="' + p.id + '"', label: esc(p.label) })).join('') + '</div>'
+      + '<h3>' + esc(T.symptomsTitle) + '</h3><div class="chips" role="group" aria-label="' + esc(T.symptomsTitle) + '">' + O.symptoms.map(s => chip({ pressed: day.symptoms.indexOf(s.id) >= 0, action: 'symptom', attrs: 'data-value="' + s.id + '"', label: esc(s.label) })).join('') + '</div>'
+      + '<h3>' + esc(T.triggersTitle) + '</h3><div class="chips" role="group" aria-label="' + esc(T.triggersTitle) + '">' + O.triggers.map(t => chip({ pressed: day.triggers.indexOf(t.id) >= 0, action: 'trigger', attrs: 'data-value="' + t.id + '"', label: esc(t.label) })).join('') + '</div>'
+      + '<h3><label for="memo">' + esc(T.memoTitle) + '</label></h3><textarea id="memo" data-input="memo" placeholder="' + esc(T.memoPlaceholder) + '" maxlength="500">' + esc(day.memo) + '</textarea>';
+  }
+  h += '</section>';
+
+  if (stored) h += '<div class="center"><button type="button" class="btn danger" data-action="delete-day">' + esc(T.deleteDay) + '</button></div>';
+  h += noticesHtml();
+  return h;
+}
+function medRow(m, i, isToday) {
+  return '<div class="med"><div class="med-head"><div class="med-name">' + esc(m.name) + '</div>'
+    + '<button type="button" class="btn small" data-action="med-remove" data-index="' + i + '" aria-label="' + esc(m.name) + ' を' + esc(T.remove) + '">' + esc(T.remove) + '</button></div>'
+    + '<div class="row"><label class="lbl" for="medtime-' + i + '">' + esc(T.medsTime) + '</label><input id="medtime-' + i + '" type="time" value="' + esc(m.time) + '" data-change="med-time" data-index="' + i + '">'
+    + (isToday ? '<button type="button" class="chip small" data-action="med-time-now" data-index="' + i + '">' + esc(T.now) + '</button>' : '')
+    + O.quickTimes.map(q => '<button type="button" class="chip small" data-action="med-time-set" data-index="' + i + '" data-time="' + q.time + '">' + esc(q.label) + ' ' + shortTime(q.time) + '</button>').join('')
+    + '</div><div class="row"><span class="lbl">' + esc(T.medsEffect) + '</span><div class="seg c3" role="group" aria-label="' + esc(m.name) + ' の' + esc(T.medsEffect) + '">'
+    + O.effects.map(e => btn({ pressed: m.effect === e.id, action: 'med-effect', attrs: 'data-index="' + i + '" data-effect="' + e.id + '"', label: '<span class="big" aria-hidden="true">' + e.symbol + '</span>' + esc(e.label) })).join('')
+    + '</div></div><p class="help small" style="margin:6px 0 0">' + esc(T.medsEffectHint) + '</p></div>';
+}
+
+/* ---------- 画面：月のまとめ（カレンダー） ---------- */
+function viewMonth(ym) {
+  const p = ym.split('-').map(Number);
+  const n = daysInMonth(p[0], p[1]);
+  const first = new Date(p[0], p[1] - 1, 1);
+  const offset = (first.getDay() - C.app.weekStart + 7) % 7;
+  const today = todayStr();
+  const st = monthStats(ym);
+  const cells = [];
+  for (let i = 0; i < offset; i++) cells.push('<div class="cal-cell empty" aria-hidden="true"></div>');
+  for (let d = 1; d <= n; d++) {
+    const key = ym + '-' + pad2(d);
+    const dow = new Date(p[0], p[1] - 1, d).getDay();
+    const day = data.days[key];
+    const mp = day ? maxPain(day) : null;
+    const lvl = mp == null ? null : levelOf(mp);
+    const future = key > today;
+    const hasMed = !!(day && day.meds.length), mens = !!(day && day.menstruation);
+    const label = [p[1] + '月' + d + '日（' + WD[dow] + '）', lvl ? lvl.label : (day ? '' : T.notRecordedBadge), hasMed ? T.legendMed : '', mens ? T.legendMens : ''].filter(Boolean).join('、');
+    cells.push('<button type="button" class="cal-cell' + (key === today ? ' today' : '') + (future ? ' future' : '') + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '') + '" data-action="cal-day" data-date="' + key + '" ' + (future ? 'disabled' : '') + ' aria-label="' + esc(label) + '">'
+      + '<span class="d" aria-hidden="true">' + d + '</span>'
+      + (lvl ? '<span class="sym ' + lvl.cls + '" aria-hidden="true">' + esc(lvl.symbol) + '</span>' : '')
+      + '<span class="marks" aria-hidden="true">' + (hasMed ? '<span class="mark med">' + esc(T.markMed) + '</span>' : '') + (mens ? '<span class="mark mens">' + esc(T.markMens) + '</span>' : '') + '</span></button>');
+  }
+  const heads = [];
+  for (let i = 0; i < 7; i++) { const w = (i + C.app.weekStart) % 7; heads.push('<div class="' + (w === 0 ? 'sun' : w === 6 ? 'sat' : '') + '">' + WD[w] + '</div>'); }
+
+  let h = '<section class="card"><h2>' + esc(T.monthTitle) + '</h2>' + monthBar(ym)
+    + '<div class="cal-head" aria-hidden="true">' + heads.join('') + '</div><div class="cal">' + cells.join('') + '</div>'
+    + '<p class="help" style="margin-top:8px">' + esc(T.calHint) + '</p>'
+    + '<div class="legend"><div class="row"><b>' + esc(T.legendPain) + '</b>' + O.painLevels.map(l => '<span class="item"><span class="sym ' + l.cls + '">' + esc(l.symbol) + '</span>' + esc(l.label) + '</span>').join('') + '<span class="item">' + esc(T.legendNoRecord) + '</span></div>'
+    + '<div class="row"><span class="item"><span class="mark med">' + esc(T.markMed) + '</span>＝' + esc(T.legendMed) + '</span><span class="item"><span class="mark mens">' + esc(T.markMens) + '</span>＝' + esc(T.legendMens) + '</span></div></div>'
+    + '</section>';
+  h += '<section class="card"><h2>' + esc(T.statsTitle) + '<span class="opt">' + fmtMonth(ym) + '</span></h2>' + statsHtml(st, false)
+    + '<div class="btn-row"><button type="button" class="btn primary block" data-action="to-doctor">' + esc(T.toDoctor) + '</button></div></section>';
+  h += noticesHtml();
+  return h;
+}
+
+/* ---------- 画面：医師に見せる ---------- */
+function viewDoctor(ym) {
+  const st = monthStats(ym);
+  let h = '<section class="card"><h2>' + esc(T.doctorTitle) + '</h2><p class="help">' + esc(T.doctorIntro) + '</p>' + monthBar(ym)
+    + statsHtml(st, true)
+    + '<div class="table-wrap"><table class="doc"><colgroup><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:8%"><col style="width:27%"><col style="width:6%"><col style="width:8%"><col></colgroup>' + tableHead() + '<tbody>' + tableRows(ym) + '</tbody></table></div>'
+    + '<p class="help small">' + legendText() + '</p>'
+    + '<div class="btn-row"><button type="button" class="btn primary block" data-action="print">' + esc(T.printBtn) + '</button></div>'
+    + '<p class="help small" style="margin-top:8px">' + esc(T.printHint) + '</p>'
+    + '</section>';
+  return h;
+}
+
+/* ---------- 印刷用（A4 縦 1枚） ---------- */
+function buildPrintSheet(ym) {
+  const st = monthStats(ym);
+  const u = esc(T.dayUnit);
+  const byMed = st.byMed.length ? st.byMed.map(m => '<b>' + esc(m.name) + '</b>' + m.days + u).join('　') : esc(T.statByMedNone);
+  $('#print-sheet').innerHTML =
+    '<div class="ph"><div class="t">' + esc(C.app.title) + '<span>' + fmtMonth(ym) + '</span></div><div class="c">' + esc(C.clinic.name) + '<br>' + esc(T.printedOn) + '：' + fmtIsoDate(new Date().toISOString()) + '</div></div>'
+    + '<div class="blanks"><span>' + esc(T.nameBlank) + '：<span class="line"></span></span><span>' + esc(T.idBlank) + '：<span class="line short"></span></span><span class="hint">' + esc(T.printBlankHint) + '</span></div>'
+    + '<table class="pt"><colgroup><col style="width:12mm"><col style="width:9mm"><col style="width:9mm"><col style="width:9mm"><col style="width:54mm"><col style="width:8mm"><col style="width:9mm"><col></colgroup>'
+    + tableHead() + '<tbody>' + tableRows(ym) + '</tbody></table>'
+    + '<div class="ps">'
+    + '<div class="box"><div class="k">' + esc(T.statRecorded) + '</div><div class="v">' + st.recorded + '<small>／' + st.daysInMonth + u + '</small></div></div>'
+    + '<div class="box"><div class="k">' + esc(T.statHeadache) + '</div><div class="v">' + st.headache + '<small>' + u + '</small></div></div>'
+    + '<div class="box"><div class="k">' + esc(T.statSevere) + '</div><div class="v">' + st.severe + '<small>' + u + '</small></div></div>'
+    + '<div class="box"><div class="k">' + esc(T.statImpact) + '</div><div class="v">' + st.impactAny + '<small>' + u + '（' + esc(T.statImpactMajor) + ' ' + st.impactMajor + u + '）</small></div></div>'
+    + '<div class="box"><div class="k">' + esc(T.statMedDays) + '</div><div class="v">' + st.medDays + '<small>' + u + '</small></div></div>'
+    + '<div class="box wide"><span class="k">' + esc(T.statByMed) + '：</span>' + byMed + (N.medicationNote ? '<br>' + esc(N.medicationNote) : '') + '</div>'
+    + '</div>'
+    + '<div class="pl">' + legendText() + '</div>'
+    + '<div class="pn"><span>' + esc(N.disclaimer) + '</span><span>' + esc(N.privacy) + '</span></div>';
+}
+
+/* ---------- 画面：設定とデータ ---------- */
+function viewSettings() {
+  const s = data.settings;
+  const n = Object.keys(data.days).length;
+  let h = '<section class="card"><h2>' + esc(T.storageTitle) + '</h2>'
+    + '<div class="notice privacy-note">' + esc(N.privacy) + '</div>'
+    + '<ul class="status-list"><li>' + esc(T.storageWhere) + '</li>'
+    + '<li>' + esc(persistedState === true ? T.persistOk : T.persistNo) + '</li>'
+    + '<li>' + esc(fmt(T.recordedCount, { n })) + '</li>'
+    + '<li>' + esc(s.lastExportAt ? fmt(T.lastExport, { date: fmtIsoDate(s.lastExportAt) }) : T.neverExported) + '</li></ul></section>';
+
+  h += '<section class="card"><h2>' + esc(T.exportTitle) + '</h2><p class="help">' + esc(T.exportDesc) + '</p>'
+    + '<div class="btn-row"><button type="button" class="btn primary block" data-action="export-file">' + esc(T.exportFile) + '</button></div>'
+    + '<div class="btn-row">' + (canShareFiles() ? '<button type="button" class="btn" data-action="export-share">' + esc(T.exportShare) + '</button>' : '')
+    + '<button type="button" class="btn" data-action="export-copy">' + esc(T.exportCopy) + '</button></div>';
+  if (ui.copyFallback) h += '<p class="help small" style="margin-top:10px"><label for="copyArea">' + esc(T.copyFallbackLabel) + '</label></p><textarea id="copyArea" readonly style="min-height:120px;font-size:.85rem">' + esc(ui.copyFallback) + '</textarea>';
+  h += '</section>';
+
+  h += '<section class="card"><h2>' + esc(T.importTitle) + '</h2><p class="help">' + esc(T.importDesc) + '</p>'
+    + '<div class="btn-row"><label class="btn block filebtn"><span>' + esc(T.importFile) + '</span><input type="file" accept=".json,application/json,text/plain" data-change="import-file"></label></div>'
+    + '<div class="btn-row"><button type="button" class="btn" data-action="import-paste-toggle" aria-expanded="' + ui.pasteOpen + '">' + esc(T.importPasteToggle) + '</button></div>';
+  if (ui.pasteOpen) h += '<div style="margin-top:10px"><textarea id="pasteArea" placeholder="' + esc(T.importPastePlaceholder) + '" aria-label="' + esc(T.importPastePlaceholder) + '"></textarea><div class="btn-row"><button type="button" class="btn primary" data-action="import-paste-run">' + esc(T.importPasteRun) + '</button></div></div>';
+  h += '</section>';
+
+  h += '<section class="card"><h2>' + esc(T.displayTitle) + '</h2>'
+    + '<button type="button" class="switch" role="switch" aria-checked="' + s.showMenstruation + '" data-action="toggle-mens-setting"><span>' + esc(T.mensSetting) + '</span><span class="state">' + esc(s.showMenstruation ? T.on : T.off) + '</span></button>'
+    + '</section>';
+
+  h += '<section class="card"><h2>' + esc(T.medsCandTitle) + '</h2><p class="help">' + esc(T.medsCandDesc) + '</p>';
+  if (data.meds.length) h += '<ul class="candlist">' + data.meds.map(nm => '<li><span>' + esc(nm) + '</span><button type="button" class="btn small" data-action="med-cand-remove" data-name="' + esc(nm) + '" aria-label="' + esc(nm) + ' を候補から' + esc(T.remove) + '">' + esc(T.remove) + '</button></li>').join('') + '</ul>';
+  else h += '<p class="help">' + esc(T.medsCandEmpty) + '</p>';
+  h += '</section>';
+
+  h += '<section class="card"><h2>' + esc(T.homeTitle) + '</h2><p class="help">' + esc(T.homeDesc) + '</p>'
+    + '<div class="btn-row"><button type="button" class="btn outline block" data-action="go" data-view="help">' + esc(T.homeLink) + '</button></div></section>';
+
+  h += '<section class="card danger-zone"><h2>' + esc(T.dangerTitle) + '</h2><p class="help">' + esc(T.dangerDesc) + '</p>'
+    + '<div class="btn-row"><button type="button" class="btn danger block" data-action="delete-all">' + esc(T.deleteAll) + '</button></div></section>';
+
+  h += '<section class="card"><h2>' + esc(T.aboutTitle) + '</h2><p>' + esc(fmt(T.aboutBody, { clinic: C.clinic.name })) + '</p>' + noticesHtml() + '</section>';
+  h += '<p class="footer">' + esc(C.app.title) + ' ver.' + esc(C.app.version) + '　' + esc(C.clinic.name) + '</p>';
+  return h;
+}
+
+/* ---------- 画面：ホーム画面に追加する方法 ---------- */
+function viewHelp() {
+  const H = T.help;
+  const steps = arr => '<ol class="step-list">' + arr.map(s => '<li>' + esc(s) + '</li>').join('') + '</ol>';
+  return '<section class="card"><h2>' + esc(H.title) + '</h2><p>' + esc(H.intro) + '</p>'
+    + '<h3>' + esc(H.iphoneTitle) + '</h3>' + steps(H.iphoneSteps)
+    + '<h3>' + esc(H.androidTitle) + '</h3>' + steps(H.androidSteps)
+    + '<h3>' + esc(H.cautionTitle) + '</h3><ul>' + H.cautions.map(s => '<li>' + esc(s) + '</li>').join('') + '</ul>'
+    + '<div class="btn-row"><button type="button" class="btn block" data-action="go" data-view="settings">' + esc(T.back) + '</button></div></section>';
+}
+
+/* ---------- ナビ・描画 ---------- */
+const NAV_ICONS = {
+  record: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.5-1 10-10-3.5-3.5-10 10L4 20z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 7.5l3.5 3.5" stroke="currentColor" stroke-width="2"/></svg>',
+  month: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2"/></svg>',
+  doctor: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 3h6v3H9z" fill="currentColor"/><path d="M8 11h8M8 15h6" stroke="currentColor" stroke-width="2"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="7" r="2.2" fill="#fff" stroke="currentColor" stroke-width="2"/><circle cx="15" cy="12" r="2.2" fill="#fff" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="17" r="2.2" fill="#fff" stroke="currentColor" stroke-width="2"/></svg>',
+};
+function renderNav() {
+  const cur = route.view === 'help' ? 'settings' : route.view;
+  $('#navButtons').innerHTML = ['record', 'month', 'doctor', 'settings'].map(v =>
+    '<button type="button" data-action="nav" data-view="' + v + '" ' + (cur === v ? 'aria-current="page"' : '') + '>' + NAV_ICONS[v] + '<span>' + esc(T.nav[v]) + '</span></button>').join('');
+}
+function renderBanners() {
+  let h = '';
+  if (DEMO) h += '<div class="banner demo"><div class="container"><span>' + esc(T.demoBanner) + '</span><button type="button" class="btn" data-action="demo-exit">' + esc(T.demoExit) + '</button></div></div>';
+  if (!DEMO && !storageOk) h += '<div class="banner error"><div class="container"><span>' + esc(T.storageErrorBanner) + '</span></div></div>';
+  $('#banners').innerHTML = h;
+}
+function render() {
+  flushMemo();
+  if (route.view === 'record' && route.date !== lastDate) { ui.optionalTouched = false; ui.newMedOpen = false; ui.newMedDraft = ''; lastDate = route.date; }
+  renderNav();
+  renderBanners();
+  let html = '';
+  if (route.view === 'record') html = viewRecord(route.date);
+  else if (route.view === 'month') html = viewMonth(route.month);
+  else if (route.view === 'doctor') html = viewDoctor(route.month);
+  else if (route.view === 'settings') html = viewSettings();
+  else if (route.view === 'help') html = viewHelp();
+  $('#view').innerHTML = html;
+  if (route.view !== lastView) { window.scrollTo(0, 0); lastView = route.view; }
+  buildPrintSheet(route.view === 'record' ? route.date.slice(0, 7) : route.month);
+}
+
+/* ---------- トースト・モーダル ---------- */
+let toastTimer = null, lastSavedToast = 0;
+function toast(msg, ms) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms || 1800);
+}
+function savedToast() {
+  const now = Date.now();
+  if (now - lastSavedToast < 2500) return;
+  lastSavedToast = now;
+  toast(T.saved, 1200);
+}
+let modalButtons = null;
+function showModal(o) {
+  modalButtons = o.buttons;
+  $('#modal').innerHTML = '<div class="modal-bg" data-action="modal-bg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">'
+    + '<h3 id="modalTitle">' + o.title + '</h3><div class="modal-body">' + o.body + '</div>'
+    + '<div class="btn-row">' + o.buttons.map((b, i) => (b.hint ? '<p class="hint">' + esc(b.hint) + '</p>' : '') + '<button type="button" class="btn ' + (b.cls || '') + '" data-action="modal-btn" data-i="' + i + '">' + esc(b.label) + '</button>').join('') + '</div></div></div>';
+  const first = $('#modal .btn');
+  if (first) first.focus();
+}
+function closeModal() { $('#modal').innerHTML = ''; modalButtons = null; }
+
+/* ---------- 書き出し・読み込み ---------- */
+function payload() {
+  return JSON.stringify({ app: C.app.exportTag, version: 1, exportedAt: new Date().toISOString(), clinic: C.clinic.name, settings: data.settings, meds: data.meds, days: data.days }, null, 1);
+}
+function fileName() { return C.app.exportFilePrefix + '_' + todayStr().replace(/-/g, '') + '.json'; }
+function markExported() {
+  data.settings.lastExportAt = new Date().toISOString();
+  data.settings.lastReminderAt = null;
+  save();
+  render();
+  toast(T.exported);
+}
+function exportFile() {
+  try {
+    const blob = new Blob([payload()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName(); a.rel = 'noopener'; a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 3000);
+    markExported();
+  } catch (e) {
+    console.warn(e);
+    toast(T.exportFailed, 3500);
+  }
+}
+function canShareFiles() {
+  try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.json', { type: 'application/json' })] })); } catch (e) { return false; }
+}
+function exportShare() {
+  let p;
+  try { p = navigator.share({ files: [new File([payload()], fileName(), { type: 'application/json' })], title: C.app.title }); }
+  catch (e) { toast(T.shareFailed); return; }
+  p.then(markExported).catch(e => { if (!e || e.name !== 'AbortError') toast(T.shareFailed); });
+}
+function exportCopy() {
+  const text = payload();
+  const fail = () => { ui.copyFallback = text; render(); toast(T.copyFailed, 4000); const ta = $('#copyArea'); if (ta) { ta.focus(); ta.select(); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => { ui.copyFallback = ''; markExported(); toast(T.copied, 3500); }).catch(fail);
+  } else fail();
+}
+function readImportFile(f) {
+  const r = new FileReader();
+  r.onload = () => importText(String(r.result || ''));
+  r.onerror = () => toast(T.importInvalid, 3500);
+  r.readAsText(f);
+}
+function importText(text) {
+  let obj = null;
+  try { obj = JSON.parse(String(text || '').trim()); } catch (e) { obj = null; }
+  if (!obj || typeof obj !== 'object' || !obj.days || typeof obj.days !== 'object') { toast(T.importInvalid, 3500); return; }
+  const norm = normalize(obj);
+  const keys = Object.keys(norm.days).sort();
+  if (!keys.length) { toast(T.importEmpty, 3500); return; }
+  showModal({
+    title: esc(T.importConfirmTitle),
+    body: '<p>' + esc(fmt(T.importConfirmBody, { n: keys.length, from: fmtDate(keys[0]), to: fmtDate(keys[keys.length - 1]) })) + '</p>',
+    buttons: [
+      { label: T.importMerge, cls: 'primary', hint: T.importMergeHint, onClick() {
+        Object.keys(norm.days).forEach(k => { data.days[k] = norm.days[k]; });
+        norm.meds.forEach(nm => { if (data.meds.indexOf(nm) < 0) data.meds.push(nm); });
+        ui.pasteOpen = false; save(); render(); toast(T.imported);
+      } },
+      { label: T.importReplace, cls: 'danger', onClick() {
+        const keep = data.settings.showMenstruation;
+        data = norm;
+        data.settings.showMenstruation = keep;
+        ui.pasteOpen = false; save(); render(); toast(T.imported);
+      } },
+      { label: T.cancel },
+    ],
+  });
+}
+
+/* ---------- 操作 ---------- */
+let memoTimer = null;
+function scheduleMemoCommit() {
+  clearTimeout(memoTimer);
+  memoTimer = setTimeout(() => { memoTimer = null; commitDay(route.date, true); }, 700);
+}
+function flushMemo() {
+  if (memoTimer) { clearTimeout(memoTimer); memoTimer = null; commitDay(route.date, true); }
+}
+function addMed(name) {
+  const day = ensureDay(route.date);
+  day.meds.push({ name, time: route.date === todayStr() ? nowHM() : '', effect: null });
+  if (data.meds.indexOf(name) < 0) data.meds.push(name);
+  ui.newMedOpen = false; ui.newMedDraft = '';
+  commitDay(route.date);
+  render();
+}
+function setMedTime(i, time, noRender) {
+  const day = ensureDay(route.date);
+  const m = day.meds[i];
+  if (!m) return;
+  m.time = /^\d{2}:\d{2}$/.test(time) ? time : '';
+  commitDay(route.date);
+  if (!noRender) render();
+}
+function toggleIn(arr, v) { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); }
+
+const actions = {
+  nav(el) {
+    const v = el.dataset.view;
+    if (v === 'record') go('record', route.date);
+    else if (v === 'month' || v === 'doctor') go(v, route.view === 'record' ? route.date.slice(0, 7) : route.month);
+    else go(v);
+  },
+  go(el) { go(el.dataset.view, el.dataset.arg || ''); },
+  'date-prev'() { go('record', addDays(route.date, -1)); },
+  'date-next'() { const n = addDays(route.date, 1); if (n <= todayStr()) go('record', n); },
+  'date-today'() { go('record', todayStr()); },
+  'quick-none'() {
+    const day = ensureDay(route.date);
+    SLOTS.forEach(s => { day.pain[s.id] = 0; });
+    day.impact = 0;
+    commitDay(route.date); render();
+  },
+  pain(el) {
+    const day = ensureDay(route.date);
+    const v = Number(el.dataset.value), s = el.dataset.slot;
+    day.pain[s] = day.pain[s] === v ? null : v;
+    commitDay(route.date); render();
+  },
+  impact(el) {
+    const day = ensureDay(route.date);
+    const v = Number(el.dataset.value);
+    day.impact = day.impact === v ? null : v;
+    commitDay(route.date); render();
+  },
+  'med-add'(el) { addMed(el.dataset.name); },
+  'med-new-toggle'() {
+    ui.newMedOpen = !ui.newMedOpen; render();
+    const i = $('#newMedName'); if (i) i.focus();
+  },
+  'med-new-add'() {
+    const i = $('#newMedName');
+    const name = (i ? i.value : '').trim().slice(0, 40);
+    if (!name) { toast(T.medsNameEmpty); if (i) i.focus(); return; }
+    addMed(name);
+  },
+  'med-remove'(el) {
+    const day = ensureDay(route.date);
+    day.meds.splice(Number(el.dataset.index), 1);
+    commitDay(route.date, true); render(); toast(T.medsRemoved);
+  },
+  'med-time-now'(el) { setMedTime(Number(el.dataset.index), nowHM()); },
+  'med-time-set'(el) { setMedTime(Number(el.dataset.index), el.dataset.time); },
+  'med-effect'(el) {
+    const day = ensureDay(route.date);
+    const m = day.meds[Number(el.dataset.index)];
+    if (!m) return;
+    m.effect = m.effect === el.dataset.effect ? null : el.dataset.effect;
+    commitDay(route.date); render();
+  },
+  mens() { const day = ensureDay(route.date); day.menstruation = !day.menstruation; commitDay(route.date); render(); },
+  'optional-toggle'() {
+    const cur = ui.optionalTouched ? ui.optionalOpen : hasOptional(getDay(route.date) || emptyDay());
+    ui.optionalOpen = !cur; ui.optionalTouched = true; render();
+  },
+  paintype(el) { const day = ensureDay(route.date); day.painType = day.painType === el.dataset.value ? null : el.dataset.value; commitDay(route.date); render(); },
+  symptom(el) { const day = ensureDay(route.date); toggleIn(day.symptoms, el.dataset.value); day.symptoms = O.symptoms.map(o => o.id).filter(id => day.symptoms.indexOf(id) >= 0); commitDay(route.date); render(); },
+  trigger(el) { const day = ensureDay(route.date); toggleIn(day.triggers, el.dataset.value); day.triggers = O.triggers.map(o => o.id).filter(id => day.triggers.indexOf(id) >= 0); commitDay(route.date); render(); },
+  'delete-day'() {
+    const date = route.date;
+    showModal({ title: esc(T.deleteDayTitle), body: '<p>' + esc(fmt(T.deleteDayBody, { date: fmtDate(date) })) + '</p>', buttons: [
+      { label: T.deleteConfirm, cls: 'danger', onClick() { delete data.days[date]; save(); render(); toast(T.deletedDay); } },
+      { label: T.cancel, cls: 'primary' },
+    ] });
+  },
+  'month-prev'() { go(route.view, addMonths(route.month, -1)); },
+  'month-next'() { const n = addMonths(route.month, 1); if (n <= todayStr().slice(0, 7)) go(route.view, n); },
+  'month-now'() { go(route.view, todayStr().slice(0, 7)); },
+  'cal-day'(el) { go('record', el.dataset.date); },
+  'to-doctor'() { go('doctor', route.month); },
+  print() { buildPrintSheet(route.month); window.print(); },
+  'export-file'() { exportFile(); },
+  'export-share'() { exportShare(); },
+  'export-copy'() { exportCopy(); },
+  'import-paste-toggle'() { ui.pasteOpen = !ui.pasteOpen; render(); const ta = $('#pasteArea'); if (ta) ta.focus(); },
+  'import-paste-run'() { const ta = $('#pasteArea'); importText(ta ? ta.value : ''); },
+  'toggle-mens-setting'() { data.settings.showMenstruation = !data.settings.showMenstruation; save(); render(); },
+  'med-cand-remove'(el) { data.meds = data.meds.filter(nm => nm !== el.dataset.name); save(); render(); },
+  'delete-all'() {
+    showModal({ title: esc(T.deleteAllTitle), body: '<p>' + esc(fmt(T.deleteAllBody, { n: Object.keys(data.days).length })) + '</p>', buttons: [
+      { label: T.deleteAllConfirm, cls: 'danger', onClick() {
+        const keep = data.settings.showMenstruation;
+        data = emptyData(); data.settings.showMenstruation = keep;
+        if (!DEMO) { try { localStorage.removeItem(C.app.storageKey); } catch (e) {} }
+        save(); render(); toast(T.deletedAll);
+      } },
+      { label: T.cancel, cls: 'primary' },
+    ] });
+  },
+  'reminder-later'() { data.settings.lastReminderAt = new Date().toISOString(); save(); render(); },
+  'reminder-now'() { exportFile(); },
+  'demo-exit'() { location.href = location.pathname; },
+  'modal-btn'(el) { const b = modalButtons && modalButtons[Number(el.dataset.i)]; closeModal(); if (b && b.onClick) b.onClick(); },
+  'modal-bg'(el, e) { if (e.target === el) closeModal(); },
+};
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el || el.disabled) return;
+  const fn = actions[el.dataset.action];
+  if (fn) fn(el, e);
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  const k = el.dataset ? el.dataset.change : '';
+  if (k === 'date-pick') { if (validDate(el.value)) go('record', el.value > todayStr() ? todayStr() : el.value); }
+  else if (k === 'med-time') setMedTime(Number(el.dataset.index), el.value, true);
+  else if (k === 'import-file') { const f = el.files && el.files[0]; if (f) readImportFile(f); el.value = ''; }
+});
+document.addEventListener('input', e => {
+  const el = e.target;
+  const k = el.dataset ? el.dataset.input : '';
+  if (k === 'memo') { ensureDay(route.date).memo = el.value.slice(0, 500); scheduleMemoCommit(); }
+  else if (k === 'newmed') ui.newMedDraft = el.value;
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && modalButtons) closeModal();
+  if (e.key === 'Enter' && e.target && e.target.id === 'newMedName') { e.preventDefault(); actions['med-new-add'](); }
+});
+window.addEventListener('beforeprint', () => buildPrintSheet(route.month));
+window.addEventListener('pagehide', flushMemo);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushMemo(); });
+
+/* ---------- 起動 ---------- */
+function init() {
+  document.title = C.app.title + '｜' + C.clinic.name;
+  $('#appTitle').textContent = C.app.title;
+  $('#clinicName').textContent = C.clinic.name;
+  $('#privacyText').textContent = T.privacyBadge;
+  $('#privacyBadge').setAttribute('title', N.privacy);
+  storageOk = DEMO ? true : storageAvailable();
+  if (!DEMO && !data.settings.firstUseAt && Object.keys(data.days).length) data.settings.firstUseAt = new Date().toISOString();
+  parseHash();
+  if (!location.hash) history.replaceState(null, '', '#record/' + route.date);
+  render();
+  if (C.features.serviceWorker && 'serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+  }
+}
+init();
+})();
+</script>
+</body>
+</html>
